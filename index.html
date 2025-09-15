@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Ultra Secure E2E Chat</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+<style>
+  :root{--accent:#2563eb;--ok:#16a34a;--danger:#ef4444}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:Inter,Roboto,Arial,sans-serif;background:#f8fafc;color:#0f172a}
+  .container{max-width:1100px;margin:0 auto;height:100vh;display:flex;flex-direction:column}
+  header{background:var(--accent);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
+  header h1{margin:0;font-size:18px}
+  header button{background:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer}
+  main{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
+  .entry,.profile,.chat-screen{width:100%;max-width:720px;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 20px rgba(16,24,40,.08)}
+  .profile,.chat-screen{display:none;flex-direction:column;height:auto}
+  .entry h2,.profile h2{margin-top:0}
+  .input-row{display:flex;gap:10px;margin-bottom:10px}
+  .input-row input{flex:1;padding:12px;border-radius:10px;border:1px solid #e6eefc;font-size:15px}
+  .big-btn{width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;margin-bottom:10px}
+  .ghost{background:#fff;border:1px solid #e6eefc;color:var(--accent)}
+  .ok{color:var(--ok);font-size:13px}
+  .err{color:var(--danger);font-size:13px}
+  .chat-top{display:flex;flex-direction:column;gap:8px;padding:12px;background:#fff;border-radius:10px;border:1px solid #eef4ff}
+  .chat-top-row{display:flex;justify-content:space-between;align-items:center}
+  .fingerprint{font-size:12px;background:#fff8e1;padding:6px 8px;border-radius:8px;color:#6b4226;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px;display:inline-block}
+  .requests-area{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .request-card{background:#fff;border:1px solid #e6eefc;padding:8px;border-radius:8px;display:flex;gap:8px;align-items:center;justify-content:space-between}
+  .messages-area{flex:1;overflow:auto;padding:12px;margin-top:12px;background:#fff;border-radius:10px;border:1px solid #eef4ff;display:flex;flex-direction:column;gap:8px}
+  .msg-row{max-width:70%;display:block}
+  .msg-row.mine{margin-left:auto;text-align:right}
+  .msg-meta{font-size:12px;color:#374151;margin-bottom:4px}
+  .msg{padding:12px;border-radius:12px;background:#f9fafb;border:1px solid #e6eefc;display:inline-block;word-break:break-word}
+  .mine .msg{background:#dcfce7}
+  .composer{display:flex;gap:8px;padding:12px;background:#fff;border-radius:10px;border:1px solid #eef4ff;margin-top:12px}
+  .composer input{flex:1;padding:12px;border-radius:999px;border:1px solid #e6eefc}
+  .top-controls{display:flex;gap:8px;align-items:center}
+  .panic{background:var(--danger);color:#fff;padding:8px;border:none;border-radius:8px}
+  footer{font-size:12px;text-align:center;padding:8px;color:#64748b}
+  .danger{background:var(--danger)!important;color:#fff!important}
+  @media (max-width:640px){
+    .container{padding:8px}
+    .fingerprint{max-width:220px}
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Ultra Secure E2E Chat</h1>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="header-nick" style="color:#fff;margin-right:8px;"></span>
+      <button id="profile-btn">Профиль</button>
+    </div>
+  </header>
+  <main>
+
+    <!-- ENTRY -->
+    <div class="entry" id="entry">
+      <h2>Добро пожаловать</h2>
+
+      <label>Ник (без пробелов)</label>
+      <div class="input-row"><input id="nick-input" placeholder="Например: TrApBoom"/></div>
+
+      <label>Пароль</label>
+      <div class="input-row"><input id="pwd-input" type="password" placeholder="Пароль (мин. 6)"/></div>
+
+      <div id="nick-status"></div>
+
+      <div class="input-row">
+        <button id="register-btn" class="big-btn">Зарегистрировать</button>
+        <button id="login-btn" class="big-btn ghost">Войти</button>
+      </div>
+
+      <hr/>
+
+      <button id="create-btn" class="big-btn">Создать комнату</button>
+
+      <div class="input-row">
+        <input id="join-input" placeholder="ID комнаты"/>
+        <button id="join-btn" class="big-btn ghost">Подать заявку</button>
+      </div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="profile" id="profile">
+      <h2>Профиль</h2>
+      <p>Ваш ник: <b id="profile-nick">—</b></p>
+      <div style="display:flex;gap:8px;">
+        <button id="logout-btn" class="big-btn ghost">Выйти</button>
+        <button id="delete-btn" class="big-btn danger">Удалить аккаунт</button>
+      </div>
+      <hr/>
+      <h3>Смена пароля (старый пароль не требуется)</h3>
+      <div class="input-row"><input id="newpwd1" type="password" placeholder="Новый пароль"/></div>
+      <div class="input-row"><input id="newpwd2" type="password" placeholder="Повторите пароль"/></div>
+      <button id="changepwd-btn" class="big-btn ghost">Сменить пароль</button>
+      <div id="pwd-status"></div>
+      <hr/>
+      <button id="back-btn" class="big-btn">Назад</button>
+    </div>
+
+    <!-- CHAT -->
+    <div class="chat-screen" id="chat-screen">
+      <div class="chat-top">
+        <div class="chat-top-row">
+          <div>
+            <div>ID комнаты: <span id="session-id">—</span></div>
+            <div>Владелец: <span id="owner-nick">—</span></div>
+          </div>
+          <div class="top-controls">
+            <div>Участников: <span id="participants-count">0</span></div>
+            <button id="leave-btn" class="ghost">Покинуть</button>
+            <button id="panic-btn" class="panic">PANIC</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;">
+          <div class="fingerprint" id="fp" style="display:none"></div>
+          <button id="copy-fp" class="ghost" style="display:none;">📋</button>
+        </div>
+
+        <div id="requests-area" class="requests-area"></div>
+      </div>
+
+      <div id="messages-area" class="messages-area"></div>
+
+      <form id="msg-form" class="composer">
+        <input id="msg-input" placeholder="Введите сообщение..." disabled/>
+        <button id="send-btn" disabled>Отправить</button>
+      </form>
+    </div>
+
+  </main>
+  <footer>ECDH (P-256) → AES-GCM (256). Сообщения доступны только участникам.</footer>
+</div>
+
+<script>
+/* ====== CONFIG (твой Firebase) ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDHL6xRYLKGIJnjlMgIbX8XlNVfSOI2cIY",
+  authDomain: "chat-5ac4f.firebaseapp.com",
+  projectId: "chat-5ac4f",
+  storageBucket: "chat-5ac4f.firebasestorage.app",
+  messagingSenderId: "68050436057",
+  appId: "1:68050436057:web:71ffddbe76b0765291a3c8",
+  measurementId: "G-XFCT24V2MS"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+/* ====== DOM refs ====== */
+const entry = document.getElementById('entry');
+const profile = document.getElementById('profile');
+const chatScreen = document.getElementById('chat-screen');
+
+const nickInput = document.getElementById('nick-input');
+const pwdInput = document.getElementById('pwd-input');
+const nickStatus = document.getElementById('nick-status');
+
+const registerBtn = document.getElementById('register-btn');
+const loginBtn = document.getElementById('login-btn');
+
+const createBtn = document.getElementById('create-btn');
+const joinInput = document.getElementById('join-input');
+const joinBtn = document.getElementById('join-btn');
+
+const profileBtn = document.getElementById('profile-btn');
+const profileNick = document.getElementById('profile-nick');
+const headerNick = document.getElementById('header-nick');
+
+const logoutBtn = document.getElementById('logout-btn');
+const deleteBtn = document.getElementById('delete-btn');
+const changepwdBtn = document.getElementById('changepwd-btn');
+const newpwd1 = document.getElementById('newpwd1');
+const newpwd2 = document.getElementById('newpwd2');
+const pwdStatus = document.getElementById('pwd-status');
+const backBtn = document.getElementById('back-btn');
+
+const sessionIdEl = document.getElementById('session-id');
+const ownerNickEl = document.getElementById('owner-nick');
+const fpEl = document.getElementById('fp');
+const copyFpBtn = document.getElementById('copy-fp');
+
+const requestsArea = document.getElementById('requests-area');
+const participantsCountEl = document.getElementById('participants-count');
+const messagesArea = document.getElementById('messages-area');
+
+const msgForm = document.getElementById('msg-form');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+
+const leaveBtn = document.getElementById('leave-btn');
+const panicBtn = document.getElementById('panic-btn');
+
+/* ====== State ====== */
+let me = null;
+let myNick = null;
+let myNickId = null;
+let ecdh = null;
+let session = null;
+let roomKey = null;
+let partRef = null;
+let ownerPub = null;
+let displayed = new Set();
+
+/* ====== Crypto helpers ====== */
+function ab2b64(ab){ return btoa(String.fromCharCode(...new Uint8Array(ab))); }
+function b642ab(b){ const bin = atob(b); const a = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a.buffer; }
+
+async function genECDH(){ return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'}, true, ['deriveBits']); }
+async function expPub(k){ return ab2b64(await crypto.subtle.exportKey('raw', k)); }
+async function impPub(b64){ return crypto.subtle.importKey('raw', b642ab(b64), {name:'ECDH',namedCurve:'P-256'}, true, []); }
+async function der(priv, pub){ const bits = await crypto.subtle.deriveBits({name:'ECDH', public: pub}, priv, 256); return crypto.subtle.importKey('raw', bits, {name:'AES-GCM'}, false, ['encrypt','decrypt']); }
+
+async function genAES(){ return crypto.subtle.generateKey({name:'AES-GCM', length:256}, true, ['encrypt','decrypt']); }
+async function expRaw(k){ return await crypto.subtle.exportKey('raw', k); }
+async function impRaw(buf){ return crypto.subtle.importKey('raw', buf, {name:'AES-GCM'}, false, ['encrypt','decrypt']); }
+
+async function enc(k, t){ const iv = crypto.getRandomValues(new Uint8Array(12)); const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, k, new TextEncoder().encode(t)); return {iv: ab2b64(iv), ct: ab2b64(ct)}; }
+async function dec(k, ivB64, ctB64){ const iv = new Uint8Array(b642ab(ivB64)); const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, b642ab(ctB64)); return new TextDecoder().decode(pt); }
+
+/* PBKDF2 for password hashing */
+async function derivePasswordBits(password, saltUint8Array, iterations=150000){
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(password), {name:'PBKDF2'}, false, ['deriveBits']);
+  return crypto.subtle.deriveBits({name:'PBKDF2', salt: saltUint8Array, iterations, hash: 'SHA-256'}, key, 256);
+}
+
+/* ====== UI helpers ====== */
+function showEntry(){ entry.style.display='block'; profile.style.display='none'; chatScreen.style.display='none'; headerNick.textContent=''; }
+function showProfile(){ entry.style.display='none'; profile.style.display='block'; chatScreen.style.display='none'; profileNick.textContent = myNick || '—'; headerNick.textContent = myNick ? `👤 ${myNick}` : ''; }
+function showChat(){ entry.style.display='none'; profile.style.display='none'; chatScreen.style.display='flex'; headerNick.textContent = myNick ? `👤 ${myNick}` : ''; msgInput.disabled = false; sendBtn.disabled = false; }
+function setStatus(msg, ok=true){ nickStatus.innerHTML = ok ? `<span class="ok">${msg}</span>` : `<span class="err">${msg}</span>`; }
+
+/* ====== Auth & init ====== */
+auth.signInAnonymously().then(async r=>{
+  me = r.user;
+  ecdh = await genECDH();
+  attachHandlers(); // attach after auth ready so handlers can rely on me
+  tryCleanupNick(); // best-effort cleanup of stale nick if any
+}).catch(e=>{ console.error('auth error', e); alert('Ошибка авторизации'); });
+
+/* ====== Handlers setup ====== */
+function attachHandlers(){
+  // UX: live nickname availability check
+  let tmr = null;
+  nickInput.addEventListener('input', ()=>{
+    clearTimeout(tmr);
+    const n = nickInput.value.trim();
+    if(!n || /\s/.test(n)){ nickStatus.textContent=''; return; }
+    const id = n.toLowerCase();
+    tmr = setTimeout(async ()=>{
+      try{
+        const snap = await db.collection('nicknames').doc(id).get();
+        if(snap.exists) setStatus('Ник занят — нажмите Войти', false); else setStatus('Ник свободен', true);
+      }catch(e){ nickStatus.textContent = ''; }
+    }, 300);
+  });
+
+  // Register
+  registerBtn.addEventListener('click', async ()=>{
+    if(!me) return alert('Подождите авторизацию');
+    const n = nickInput.value.trim(); const pwd = pwdInput.value || '';
+    if(!n || /\s/.test(n)) return setStatus('Неверный ник', false);
+    if(pwd.length < 6) return setStatus('Пароль минимум 6 символов', false);
+    const id = n.toLowerCase();
+    const ref = db.collection('nicknames').doc(id);
+    try{
+      await db.runTransaction(async tx=>{
+        const s = await tx.get(ref);
+        if(s.exists) throw new Error('occupied');
+        // generate salt & hash
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const bits = await derivePasswordBits(pwd, salt);
+        tx.set(ref, {
+          uid: me.uid,
+          display: n,
+          salt: ab2b64(salt.buffer),
+          pwdHash: ab2b64(bits),
+          lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      myNick = n; myNickId = id; setStatus('Ник зарегистрирован ✔', true);
+      headerNick.textContent = `👤 ${myNick}`;
+    }catch(e){
+      setStatus('Ник занят — нажмите Войти', false);
+    }
+  });
+
+  // Login
+  loginBtn.addEventListener('click', async ()=>{
+    if(!me) return alert('Подождите авторизацию');
+    const n = nickInput.value.trim(); const pwd = pwdInput.value || '';
+    if(!n || /\s/.test(n)) return setStatus('Неверный ник', false);
+    if(!pwd) return setStatus('Введите пароль', false);
+    const id = n.toLowerCase();
+    const ref = db.collection('nicknames').doc(id);
+    try{
+      const snap = await ref.get();
+      if(!snap.exists) return setStatus('Ник не найден — зарегистрируйтесь', false);
+      const d = snap.data();
+      if(!d.salt || !d.pwdHash) return setStatus('Ник зарегистрирован неправильно', false);
+      const saltBuf = b642ab(d.salt);
+      const bits = await derivePasswordBits(pwd, new Uint8Array(saltBuf));
+      const hashB64 = ab2b64(bits);
+      if(hashB64 !== d.pwdHash) return setStatus('Неверный пароль', false);
+      // password ok — set local state
+      myNick = d.display || n; myNickId = id;
+      setStatus('Вход выполнен ✔', true);
+      headerNick.textContent = `👤 ${myNick}`;
+    }catch(e){
+      console.error(e);
+      setStatus('Ошибка при входе', false);
+    }
+  });
+
+  // Profile navigation
+  profileBtn.addEventListener('click', ()=>{
+    if(!myNick) return alert('Сначала зарегистрируйтесь/войдите');
+    showProfile();
+  });
+  backBtn.addEventListener('click', ()=> showEntry());
+
+  // Logout: гарантированно удалить ник (если он принадлежит текущему uid)
+  logoutBtn.addEventListener('click', async ()=>{
+    if(myNickId){
+      try{
+        const ref = db.collection('nicknames').doc(myNickId);
+        const snap = await ref.get();
+        if(snap.exists && snap.data().uid === me.uid){
+          await ref.delete();
+        }
+      }catch(e){}
+    }
+    // clear local state
+    myNick = null; myNickId = null; headerNick.textContent = '';
+    showEntry();
+    alert('Вы вышли — ник освобождён (если вы были владельцем)');
+  });
+
+  // Delete account
+  deleteBtn.addEventListener('click', async ()=>{
+    if(!myNickId) return alert('Нет зарегистрированного ника');
+    if(!confirm('Удалить аккаунт навсегда?')) return;
+    try{
+      const ref = db.collection('nicknames').doc(myNickId);
+      const snap = await ref.get();
+      if(snap.exists && snap.data().uid === me.uid){
+        await ref.delete();
+      } else {
+        // если не владелец — всё равно пытаться удалить не стоит
+      }
+    }catch(e){}
+    myNick = null; myNickId = null; headerNick.textContent = '';
+    showEntry();
+    alert('Аккаунт удалён (если вы были владельцем)');
+  });
+
+  // Change password (no old password required) — only if you are owner of nick document
+  changepwdBtn.addEventListener('click', async ()=>{
+    const p1 = newpwd1.value || '', p2 = newpwd2.value || '';
+    if(p1.length < 6) return pwdStatus.textContent = 'Минимум 6 символов';
+    if(p1 !== p2) return pwdStatus.textContent = 'Пароли не совпадают';
+    if(!myNickId) return pwdStatus.textContent = 'Нет ника';
+    try{
+      const ref = db.collection('nicknames').doc(myNickId);
+      const snap = await ref.get();
+      if(!snap.exists) return pwdStatus.textContent = 'Документ ника не найден';
+      const data = snap.data();
+      if(data.uid !== me.uid) return pwdStatus.textContent = 'Вы не владелец ника — изменить пароль нельзя';
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const bits = await derivePasswordBits(p1, salt);
+      await ref.update({ salt: ab2b64(salt.buffer), pwdHash: ab2b64(bits) });
+      pwdStatus.textContent = 'Пароль изменён ✔';
+      newpwd1.value = ''; newpwd2.value = '';
+    }catch(e){
+      console.error(e);
+      pwdStatus.textContent = 'Ошибка при смене пароля';
+    }
+  });
+
+  /* ---------- Chat / session buttons ---------- */
+
+  // Create room
+  createBtn.addEventListener('click', async ()=>{
+    if(!myNick) return alert('Сначала зарегистрируйтесь/войдите');
+    try{
+      session = Math.random().toString(36).slice(2,12);
+      sessionIdEl.textContent = session;
+      ownerNickEl.textContent = myNick;
+      ownerPub = await expPub(ecdh.publicKey);
+      roomKey = await genAES();
+      await db.collection('sessions').doc(session).set({ ownerUid: me.uid, ownerNick: myNick, ownerPublicKey: ownerPub });
+      partRef = db.collection('sessions').doc(session).collection('participants').doc(me.uid);
+      await partRef.set({ uid: me.uid, nickname: myNick, publicKey: ownerPub, lastSeen: firebase.firestore.FieldValue.serverTimestamp() });
+      showChat();
+      listenPartsOwner();
+      listenMsgs();
+      listenRequestsOwner();
+      fpEl.style.display = 'inline-block'; fpEl.textContent = ownerPub;
+      copyFpBtn.style.display = 'inline-block';
+    }catch(e){ console.error(e); alert('Ошибка создания комнаты'); }
+  });
+
+  // Submit join request
+  joinBtn.addEventListener('click', async ()=>{
+    if(!myNick) return alert('Сначала зарегистрируйтесь/войдите');
+    const sid = joinInput.value.trim(); if(!sid) return alert('Введите ID комнаты');
+    const doc = await db.collection('sessions').doc(sid).get();
+    if(!doc.exists) return alert('Комната не найдена');
+    try{
+      await db.collection('sessions').doc(sid).collection('requests').doc(me.uid).set({
+        uid: me.uid,
+        nickname: myNick,
+        publicKey: await expPub(ecdh.publicKey),
+        ts: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'pending'
+      });
+      alert('Заявка отправлена владельцу комнаты');
+      // prepare to wait for encryptedRoomKey on participants doc
+      session = sid;
+      ownerNickEl.textContent = doc.data().ownerNick || '—';
+      ownerPub = doc.data().ownerPublicKey;
+      partRef = db.collection('sessions').doc(session).collection('participants').doc(me.uid);
+      partRef.onSnapshot(async snap=>{
+        if(snap.exists){
+          const d = snap.data();
+          if(d.encryptedRoomKey && !roomKey){
+            try{
+              const [iv, ct] = d.encryptedRoomKey.split(':');
+              const op = await impPub(ownerPub);
+              const derKey = await der(ecdh.privateKey, op);
+              const raw = await crypto.subtle.decrypt({name:'AES-GCM', iv: new Uint8Array(b642ab(iv))}, derKey, b642ab(ct));
+              roomKey = await impRaw(raw);
+              listenMsgs();
+              showChat();
+              fpEl.style.display='inline-block'; fpEl.textContent = ownerPub; copyFpBtn.style.display='inline-block';
+            }catch(e){ console.error('decrypt roomKey fail', e); }
+          }
+        }
+      });
+    }catch(e){ console.error(e); alert('Ошибка отправки заявки'); }
+  });
+
+  // Listen for requests (owner sees)
+  function listenRequestsOwner(){
+    requestsArea.innerHTML = '';
+    const reqCol = db.collection('sessions').doc(session).collection('requests');
+    reqCol.where('status','==','pending').onSnapshot(snapshot=>{
+      requestsArea.innerHTML = '';
+      snapshot.forEach(doc=>{
+        const d = doc.data();
+        const card = document.createElement('div'); card.className = 'request-card';
+        const lbl = document.createElement('div'); lbl.textContent = `Участник ${d.nickname} хочет вступить`;
+        const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='6px';
+        const accept = document.createElement('button'); accept.textContent = 'Принять'; accept.className='big-btn'; accept.style.padding='6px 10px'; accept.style.width='auto';
+        const reject = document.createElement('button'); reject.textContent = 'Отклонить'; reject.className='ghost'; reject.style.padding='6px 10px'; reject.style.width='auto';
+        accept.onclick = async ()=>{
+          try{
+            await db.collection('sessions').doc(session).collection('participants').doc(d.uid).set({
+              uid: d.uid, nickname: d.nickname, publicKey: d.publicKey, lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            await doc.ref.delete();
+          }catch(e){ console.error(e); alert('Ошибка при принятии'); }
+        };
+        reject.onclick = async ()=>{ try{ await doc.ref.update({ status:'rejected' }); }catch(e){ try{ await doc.ref.delete(); }catch(_){} } };
+        actions.appendChild(accept); actions.appendChild(reject);
+        card.appendChild(lbl); card.appendChild(actions); requestsArea.appendChild(card);
+      });
+    });
+  }
+
+  // Owner: distribute roomKey to participants
+  function listenPartsOwner(){
+    const col = db.collection('sessions').doc(session).collection('participants');
+    col.onSnapshot(async snap=>{
+      participantsCountEl.textContent = snap.size;
+      for(const ch of snap.docChanges()){
+        if(ch.type === 'added'){
+          const d = ch.doc.data();
+          if(d.publicKey && !d.encryptedRoomKey){
+            try{
+              const remotePub = await impPub(d.publicKey);
+              const k = await der(ecdh.privateKey, remotePub);
+              const raw = await expRaw(roomKey);
+              const iv = crypto.getRandomValues(new Uint8Array(12));
+              const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, k, raw);
+              await ch.doc.ref.update({ encryptedRoomKey: ab2b64(iv) + ':' + ab2b64(ct) });
+            }catch(e){ console.error('distribute key failed', e); }
+          }
+        }
+      }
+    });
+  }
+
+  // Messages listener (decrypt using roomKey)
+  function listenMsgs(){
+    messagesArea.innerHTML = '';
+    db.collection('sessions').doc(session).collection('messages').orderBy('ts').onSnapshot(snap=>{
+      snap.docChanges().forEach(async ch=>{
+        if(ch.type === 'added'){
+          if(displayed.has(ch.doc.id)) return;
+          displayed.add(ch.doc.id);
+          const d = ch.doc.data();
+          if(!roomKey) return;
+          try{
+            const t = await dec(roomKey, d.iv, d.ct);
+            addMsg(d.senderUid === me.uid ? myNick : (d.senderNick || 'Собеседник'), t, d.senderUid === me.uid);
+          }catch(e){ console.error('decrypt msg fail', e); }
+        }
+      });
+    });
+  }
+
+  // Send message
+  msgForm.addEventListener('submit', async (ev)=>{
+    ev.preventDefault();
+    const text = msgInput.value.trim(); if(!text || !roomKey) return;
+    try{
+      const {iv, ct} = await enc(roomKey, text);
+      await db.collection('sessions').doc(session).collection('messages').add({
+        senderUid: me.uid, senderNick: myNick, iv, ct, ts: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      msgInput.value = '';
+    }catch(e){ console.error(e); }
+  });
+
+  // Add msg to UI
+  function addMsg(nick, text, mine){
+    const r = document.createElement('div'); r.className = 'msg-row' + (mine ? ' mine' : '');
+    const m = document.createElement('div'); m.className = 'msg-meta'; m.textContent = nick;
+    const b = document.createElement('div'); b.className = 'msg'; b.textContent = text;
+    r.appendChild(m); r.appendChild(b); messagesArea.appendChild(r); messagesArea.scrollTop = messagesArea.scrollHeight;
+  }
+
+  // Copy fingerprint
+  copyFpBtn.addEventListener('click', ()=>{ navigator.clipboard.writeText(fpEl.textContent).then(()=>{ copyFpBtn.textContent='Скопировано ✔'; setTimeout(()=>copyFpBtn.textContent='📋',1500); }); });
+
+  // Leave
+  leaveBtn.addEventListener('click', async ()=>{
+    if(partRef) await partRef.delete().catch(()=>{});
+    if(myNickId){
+      try{
+        const ref = db.collection('nicknames').doc(myNickId);
+        const s = await ref.get();
+        if(s.exists && s.data().uid === me.uid) await ref.delete();
+      }catch(e){}
+    }
+    // reset
+    myNick = null; myNickId = null; session = null; roomKey = null; partRef = null; displayed.clear();
+    showEntry();
+    location.reload();
+  });
+
+  // Panic - delete messages, remove participant and optionally nick
+  panicBtn.addEventListener('click', async ()=>{
+    if(!session) return;
+    if(!confirm('PANIC: удалить все сообщения в комнате?')) return;
+    const msgs = db.collection('sessions').doc(session).collection('messages');
+    while(true){
+      const s = await msgs.limit(50).get();
+      if(s.empty) break;
+      const b = db.batch(); s.docs.forEach(d=>b.delete(d.ref)); await b.commit();
+    }
+    if(partRef) await partRef.delete().catch(()=>{});
+    if(myNickId){
+      try{ const ref = db.collection('nicknames').doc(myNickId); const s = await ref.get(); if(s.exists && s.data().uid === me.uid) await ref.delete(); }catch(e){}
+    }
+    location.reload();
+  });
+
+  /* Unload cleanup: best-effort */
+  window.addEventListener('beforeunload', tryCleanupNick);
+  window.addEventListener('unload', tryCleanupNick);
+}
+
+/* Best-effort: удаляем локальный ник из базы, только если doc.uid == me.uid */
+function tryCleanupNick(){
+  if(!myNickId || !me) return;
+  try{
+    const ref = db.collection('nicknames').doc(myNickId);
+    ref.get().then(snap=>{
+      if(snap.exists && snap.data().uid === me.uid){
+        ref.delete().catch(()=>{});
+      }
+    }).catch(()=>{});
+  }catch(e){}
+}
+</script>
+</body>
+</html>
